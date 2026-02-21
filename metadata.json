@@ -1,0 +1,5 @@
+{
+  "name": "Memória Guadalupe",
+  "description": "Jogo da memória personalizado para o Colégio Guadalupe, com painel administrativo para upload de desenhos dos alunos.",
+  "requestFramePermissions": []
+}
