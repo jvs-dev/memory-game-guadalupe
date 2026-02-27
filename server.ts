@@ -15,6 +15,8 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS cards (
     id TEXT PRIMARY KEY,
     image_data TEXT NOT NULL,
+    points INTEGER DEFAULT 10,
+    author TEXT DEFAULT 'Admin',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
 `);
@@ -36,14 +38,14 @@ async function startServer() {
   });
 
   app.post('/api/cards', (req, res) => {
-    const { id, image_data } = req.body;
+    const { id, image_data, points, author } = req.body;
     if (!id || !image_data) {
       return res.status(400).json({ error: 'ID and image data are required' });
     }
 
     try {
-      const insert = db.prepare('INSERT OR REPLACE INTO cards (id, image_data) VALUES (?, ?)');
-      insert.run(id, image_data);
+      const insert = db.prepare('INSERT OR REPLACE INTO cards (id, image_data, points, author) VALUES (?, ?, ?, ?)');
+      insert.run(id, image_data, points || 10, author || 'Admin');
       res.json({ success: true, id });
     } catch (error) {
       res.status(500).json({ error: 'Failed to save card' });

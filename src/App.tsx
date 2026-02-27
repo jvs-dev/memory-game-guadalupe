@@ -11,7 +11,11 @@ import {
   XCircle,
   Trophy,
   GraduationCap,
-  Users
+  Users,
+  Instagram,
+  MessageCircle,
+  Globe,
+  Code
 } from 'lucide-react';
 
 import { appwriteService, isAppwriteConfigured } from './services/appwrite';
@@ -21,6 +25,8 @@ import { appwriteService, isAppwriteConfigured } from './services/appwrite';
 interface CardData {
   id: string;
   image_data: string;
+  points?: number;
+  author?: string;
   appwriteId?: string;
   fileId?: string;
 }
@@ -30,6 +36,7 @@ interface GameCard extends CardData {
   isFlipped: boolean;
   isMatched: boolean;
   isHighlighting?: boolean;
+  cardType: 'image' | 'text';
 }
 
 // --- Components ---
@@ -49,31 +56,39 @@ const Card = ({ card, onClick, disabled }: { card: GameCard; onClick: () => void
           <GraduationCap className="w-8 h-8 md:w-12 md:h-12 text-white opacity-50" />
         </div>
 
-        {/* Back (Image) */}
+        {/* Back (Image or Text) */}
         <div 
           className={`absolute inset-0 w-full h-full backface-hidden bg-white rounded-xl shadow-lg border-4 overflow-hidden flex items-center justify-center transition-colors duration-300 ${
             card.isHighlighting ? 'border-green-500 bg-green-50 shadow-green-200 shadow-2xl scale-105 z-10' : 'border-blue-500'
           }`}
           style={{ transform: 'rotateY(180deg)' }}
         >
-          <img 
-            src={card.image_data} 
-            alt={card.id} 
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
-            onError={(e) => {
-              const img = e.currentTarget;
-              // If it fails, try adding the project ID manually if not present
-              if (!img.src.includes('project=')) {
-                const projectId = import.meta.env.VITE_APPWRITE_PROJECT_ID;
-                img.src = `${img.src}${img.src.includes('?') ? '&' : '?'}project=${projectId}`;
-                return;
-              }
-              console.error(`Erro ao carregar imagem da carta ${card.id}:`, card.image_data);
-              img.style.display = 'none';
-              img.parentElement!.innerHTML = `<div class="flex flex-col items-center text-red-400 p-2"><span class="text-[10px] font-bold uppercase">${card.id}</span><small class="text-[8px]">Erro de carga</small></div>`;
-            }}
-          />
+          {card.cardType === 'image' ? (
+            <img 
+              src={card.image_data} 
+              alt={card.id} 
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                const img = e.currentTarget;
+                // If it fails, try adding the project ID manually if not present
+                if (!img.src.includes('project=')) {
+                  const projectId = import.meta.env.VITE_APPWRITE_PROJECT_ID;
+                  img.src = `${img.src}${img.src.includes('?') ? '&' : '?'}project=${projectId}`;
+                  return;
+                }
+                console.error(`Erro ao carregar imagem da carta ${card.id}:`, card.image_data);
+                img.style.display = 'none';
+                img.parentElement!.innerHTML = `<div class="flex flex-col items-center text-red-400 p-2"><span class="text-[10px] font-bold uppercase">${card.id}</span><small class="text-[8px]">Erro de carga</small></div>`;
+              }}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center p-4 bg-blue-50">
+              <span className="text-xl md:text-2xl font-black text-blue-900 uppercase text-center break-words leading-tight">
+                {card.id}
+              </span>
+            </div>
+          )}
         </div>
       </motion.div>
     </div>
@@ -84,6 +99,7 @@ const AdminPanel = ({ onBack }: { onBack: () => void }) => {
   const [cards, setCards] = useState<CardData[]>([]);
   const [newId, setNewId] = useState('');
   const [newImage, setNewImage] = useState<string | null>(null);
+  const [isValuable, setIsValuable] = useState(false);
   const [loading, setLoading] = useState(false);
   const appwriteActive = isAppwriteConfigured();
 
@@ -124,11 +140,13 @@ const AdminPanel = ({ onBack }: { onBack: () => void }) => {
   const handleUpload = async () => {
     if (!newId || !newImage) return;
     setLoading(true);
+    const points = isValuable ? 20 : 10;
+    const author = 'Admin';
     try {
       let success = false;
       if (appwriteActive) {
         try {
-          await appwriteService.uploadCard(newId, newImage);
+          await appwriteService.uploadCard(newId, newImage, points, author);
           success = true;
         } catch (error) {
           console.error('Appwrite upload failed, trying local fallback:', error);
@@ -136,7 +154,7 @@ const AdminPanel = ({ onBack }: { onBack: () => void }) => {
           const res = await fetch('/api/cards', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: newId, image_data: newImage }),
+            body: JSON.stringify({ id: newId, image_data: newImage, points, author }),
           });
           if (res.ok) success = true;
         }
@@ -144,7 +162,7 @@ const AdminPanel = ({ onBack }: { onBack: () => void }) => {
         const res = await fetch('/api/cards', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: newId, image_data: newImage }),
+          body: JSON.stringify({ id: newId, image_data: newImage, points, author }),
         });
         if (res.ok) success = true;
       }
@@ -152,6 +170,7 @@ const AdminPanel = ({ onBack }: { onBack: () => void }) => {
       if (success) {
         setNewId('');
         setNewImage(null);
+        setIsValuable(false);
         fetchCards();
       } else {
         alert('Erro ao salvar carta no servidor local.');
@@ -210,6 +229,18 @@ const AdminPanel = ({ onBack }: { onBack: () => void }) => {
             value={newId}
             onChange={(e) => setNewId(e.target.value)}
           />
+          <div className="flex items-center gap-2 px-1">
+            <input 
+              type="checkbox" 
+              id="valuable-check"
+              className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+              checked={isValuable}
+              onChange={(e) => setIsValuable(e.target.checked)}
+            />
+            <label htmlFor="valuable-check" className="text-blue-700 font-medium cursor-pointer">
+              Esta carta vale mais pontos (20 pts)
+            </label>
+          </div>
           <div className="relative">
             <input 
               type="file" 
@@ -278,6 +309,14 @@ const AdminPanel = ({ onBack }: { onBack: () => void }) => {
             />
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
               <span className="text-white font-bold text-sm">{card.id}</span>
+              <div className="flex flex-col items-center gap-1">
+                <span className="bg-yellow-400 text-blue-900 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                  {card.points || 10} pts
+                </span>
+                <span className="text-white text-[10px] opacity-80 italic">
+                  Por: {card.author || 'Admin'}
+                </span>
+              </div>
               <button 
                 onClick={() => handleDelete(card)}
                 className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
@@ -289,6 +328,148 @@ const AdminPanel = ({ onBack }: { onBack: () => void }) => {
         ))}
       </div>
     </div>
+  );
+};
+
+const StudentUploadModal = ({ isOpen, onClose, onUploadSuccess }: { isOpen: boolean; onClose: () => void; onUploadSuccess: () => void }) => {
+  const [newId, setNewId] = useState('');
+  const [authorName, setAuthorName] = useState('');
+  const [newImage, setNewImage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const appwriteActive = isAppwriteConfigured();
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!newId || !newImage || !authorName) return;
+    setLoading(true);
+    // Students always upload 10 points cards
+    const points = 10;
+    try {
+      let success = false;
+      if (appwriteActive) {
+        try {
+          await appwriteService.uploadCard(newId, newImage, points, authorName);
+          success = true;
+        } catch (error) {
+          console.error('Appwrite upload failed, trying local fallback:', error);
+          const res = await fetch('/api/cards', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: newId, image_data: newImage, points, author: authorName }),
+          });
+          if (res.ok) success = true;
+        }
+      } else {
+        const res = await fetch('/api/cards', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: newId, image_data: newImage, points, author: authorName }),
+        });
+        if (res.ok) success = true;
+      }
+
+      if (success) {
+        setNewId('');
+        setAuthorName('');
+        setNewImage(null);
+        onUploadSuccess();
+        onClose();
+        alert('Desenho enviado com sucesso! Obrigado por participar.');
+      } else {
+        alert('Erro ao enviar desenho.');
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('Erro ao enviar desenho.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-blue-900/80 backdrop-blur-sm p-4"
+    >
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl max-w-md w-full space-y-6"
+      >
+        <div className="flex justify-between items-center">
+          <h3 className="text-2xl font-bold text-blue-800">Enviar meu Desenho</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <XCircle className="w-6 h-6" />
+          </button>
+        </div>
+        
+        <p className="text-blue-600 text-sm">
+          Compartilhe sua arte com a escola! Seu desenho poderá aparecer no jogo da memória.
+        </p>
+
+        <div className="space-y-4">
+          <input 
+            type="text" 
+            placeholder="Seu Nome (ex: Maria Silva)" 
+            className="w-full px-4 py-3 rounded-xl border border-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={authorName}
+            onChange={(e) => setAuthorName(e.target.value)}
+          />
+          <input 
+            type="text" 
+            placeholder="Nome do desenho (ex: Gato)" 
+            className="w-full px-4 py-3 rounded-xl border border-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={newId}
+            onChange={(e) => setNewId(e.target.value)}
+          />
+          
+          <div className="relative">
+            <input 
+              type="file" 
+              accept="image/*" 
+              onChange={handleFileChange}
+              className="hidden" 
+              id="student-file-upload"
+            />
+            <label 
+              htmlFor="student-file-upload"
+              className="flex flex-col items-center justify-center gap-3 p-6 border-2 border-dashed border-blue-200 rounded-xl cursor-pointer hover:bg-blue-50 transition-colors"
+            >
+              {newImage ? (
+                <img src={newImage} alt="Preview" className="w-32 h-32 object-cover rounded-lg shadow-md" />
+              ) : (
+                <>
+                  <ImageIcon className="w-10 h-10 text-blue-300" />
+                  <span className="text-blue-600 font-medium">Selecionar Imagem</span>
+                </>
+              )}
+            </label>
+          </div>
+
+          <button 
+            onClick={handleUpload}
+            disabled={loading || !newId || !newImage || !authorName}
+            className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+          >
+            {loading ? 'Enviando...' : 'Enviar Desenho'}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 };
 
@@ -304,6 +485,7 @@ export default function App() {
   const [isWon, setIsWon] = useState(false);
   const [isAdminAuth, setIsAdminAuth] = useState(false);
   const [showPassModal, setShowPassModal] = useState(false);
+  const [showStudentUpload, setShowStudentUpload] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [matchedCardId, setMatchedCardId] = useState<string | null>(null);
 
@@ -337,17 +519,36 @@ export default function App() {
     const shuffledPool = [...allCards].sort(() => Math.random() - 0.5);
     const selected = shuffledPool.slice(0, 6);
 
-    // Duplicate and shuffle for game
-    const gamePool = [...selected, ...selected]
+    // Duplicate and create pairs (one image, one text)
+    const gamePool: GameCard[] = [];
+    selected.forEach((card) => {
+      // Image version
+      gamePool.push({
+        ...card,
+        uniqueId: Math.random(), // Temporary unique ID for sorting
+        isFlipped: false,
+        isMatched: false,
+        cardType: 'image'
+      });
+      // Text version
+      gamePool.push({
+        ...card,
+        uniqueId: Math.random(), // Temporary unique ID for sorting
+        isFlipped: false,
+        isMatched: false,
+        cardType: 'text'
+      });
+    });
+
+    // Final shuffle and assign stable uniqueIds
+    const finalPool = gamePool
       .sort(() => Math.random() - 0.5)
       .map((card, index) => ({
         ...card,
-        uniqueId: index,
-        isFlipped: false,
-        isMatched: false,
+        uniqueId: index
       }));
 
-    setCards(gamePool);
+    setCards(finalPool);
     setFlippedCards([]);
     setMatches(0);
     setMoves(0);
@@ -403,16 +604,19 @@ export default function App() {
 
           // After 2 seconds, mark as matched
           setTimeout(() => {
+            const cardPoints = firstCard.points || 10;
             setCards(prev => prev.map(c => 
               c.id === firstCard.id ? { ...c, isMatched: true, isHighlighting: false } : c
             ));
             setMatches(m => m + 1);
             setMatchedCardId(null);
             
-            if (gameMode === 'multiplayer') {
+            if (gameMode === 'solo') {
+              setScores(prev => ({ ...prev, p1: prev.p1 + cardPoints }));
+            } else {
               setScores(prev => ({
                 ...prev,
-                [currentPlayer === 1 ? 'p1' : 'p2']: prev[currentPlayer === 1 ? 'p1' : 'p2'] + 1
+                [currentPlayer === 1 ? 'p1' : 'p2']: prev[currentPlayer === 1 ? 'p1' : 'p2'] + cardPoints
               }));
             }
 
@@ -453,13 +657,23 @@ export default function App() {
           </div>
           <h1 className="text-lg md:text-2xl font-bold text-blue-800 tracking-tight">Colégio Guadalupe</h1>
         </div>
-        <button 
-          onClick={handleAdminAccess}
-          className="p-2 text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
-          title="Configurações"
-        >
-          <Settings className="w-5 h-5 md:w-6 md:h-6" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setShowStudentUpload(true)}
+            className="p-2 text-blue-600 hover:bg-blue-50 rounded-full transition-colors flex items-center gap-2"
+            title="Enviar Desenho"
+          >
+            <Upload className="w-5 h-5 md:w-6 md:h-6" />
+            <span className="hidden md:inline text-sm font-bold">Enviar Desenho</span>
+          </button>
+          <button 
+            onClick={handleAdminAccess}
+            className="p-2 text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+            title="Configurações"
+          >
+            <Settings className="w-5 h-5 md:w-6 md:h-6" />
+          </button>
+        </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-6 md:py-12">
@@ -506,6 +720,16 @@ export default function App() {
             </motion.div>
           )}
 
+          <AnimatePresence>
+            {showStudentUpload && (
+              <StudentUploadModal 
+                isOpen={showStudentUpload} 
+                onClose={() => setShowStudentUpload(false)} 
+                onUploadSuccess={() => {}} 
+              />
+            )}
+          </AnimatePresence>
+
           {view === 'menu' ? (
             <motion.div 
               key="menu"
@@ -536,6 +760,48 @@ export default function App() {
                   2 Jogadores
                 </button>
               </div>
+
+              {/* Social Media & Developer Tag */}
+              <div className="fixed bottom-6 right-6 flex items-center gap-4 z-30">
+                <div className="flex gap-2">
+                  <a 
+                    href="https://www.instagram.com/colegioguadalupeoficial/" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="p-2 bg-white text-pink-600 rounded-full shadow-lg hover:scale-110 transition-transform border border-pink-100"
+                    title="Instagram"
+                  >
+                    <Instagram className="w-5 h-5" />
+                  </a>
+                  <a 
+                    href="https://wa.me/5511999999999" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="p-2 bg-white text-green-600 rounded-full shadow-lg hover:scale-110 transition-transform border border-green-100"
+                    title="WhatsApp"
+                  >
+                    <MessageCircle className="w-5 h-5" />
+                  </a>
+                  <a 
+                    href="https://www.colegioguadalupe.com.br" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="p-2 bg-white text-blue-600 rounded-full shadow-lg hover:scale-110 transition-transform border border-blue-100"
+                    title="Website"
+                  >
+                    <Globe className="w-5 h-5" />
+                  </a>
+                </div>
+                <a 
+                  href="https://jvsdev.vercel.app" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-900/10 backdrop-blur-sm text-blue-900 rounded-lg hover:bg-blue-900/20 transition-colors group"
+                >
+                  <Code className="w-4 h-4" />
+                  <span className="text-sm font-bold tracking-tight">jvsdev</span>
+                </a>
+              </div>
             </motion.div>
           ) : (
             <motion.div 
@@ -552,6 +818,10 @@ export default function App() {
                       <span className="text-2xl md:text-3xl font-black text-blue-800">{moves}</span>
                     </div>
                     <div className="text-center px-2">
+                      <span className="block text-[10px] md:text-xs uppercase font-bold text-blue-500 tracking-widest">Pontos</span>
+                      <span className="text-2xl md:text-3xl font-black text-blue-800">{scores.p1}</span>
+                    </div>
+                    <div className="text-center px-2">
                       <span className="block text-[10px] md:text-xs uppercase font-bold text-blue-500 tracking-widest">Pares</span>
                       <span className="text-2xl md:text-3xl font-black text-blue-800">{matches} / 6</span>
                     </div>
@@ -560,12 +830,12 @@ export default function App() {
                   <div className="flex gap-8 items-center">
                     <div className={`text-center px-4 py-2 rounded-2xl transition-all ${currentPlayer === 1 ? 'bg-blue-100 ring-2 ring-blue-400' : 'opacity-50'}`}>
                       <span className="block text-[10px] uppercase font-bold text-blue-500 tracking-widest">Jogador 1</span>
-                      <span className="text-2xl font-black text-blue-800">{scores.p1}</span>
+                      <span className="text-2xl font-black text-blue-800">{scores.p1} pts</span>
                     </div>
                     <div className="text-xl font-bold text-blue-300">VS</div>
                     <div className={`text-center px-4 py-2 rounded-2xl transition-all ${currentPlayer === 2 ? 'bg-indigo-100 ring-2 ring-indigo-400' : 'opacity-50'}`}>
                       <span className="block text-[10px] uppercase font-bold text-indigo-500 tracking-widest">Jogador 2</span>
-                      <span className="text-2xl font-black text-indigo-800">{scores.p2}</span>
+                      <span className="text-2xl font-black text-indigo-800">{scores.p2} pts</span>
                     </div>
                   </div>
                 )}
@@ -626,9 +896,9 @@ export default function App() {
                     </h2>
                     <p className="text-base md:text-lg text-blue-700">
                       {gameMode === 'solo' ? (
-                        <>Você completou o jogo em <span className="font-bold">{moves}</span> movimentos.</>
+                        <>Você completou o jogo em <span className="font-bold">{moves}</span> movimentos e fez <span className="font-bold">{scores.p1}</span> pontos!</>
                       ) : (
-                        <>Placar final: <span className="font-bold">{scores.p1}</span> vs <span className="font-bold">{scores.p2}</span></>
+                        <>Placar final: <span className="font-bold">{scores.p1}</span> vs <span className="font-bold">{scores.p2}</span> pontos.</>
                       )}
                     </p>
                     <div className="flex flex-col gap-3">

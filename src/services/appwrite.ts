@@ -46,10 +46,12 @@ export interface AppwriteCard {
   cardId: string;
   fileId: string;
   imageUrl: string;
+  points: number;
+  author: string;
 }
 
 export const appwriteService = {
-  async uploadCard(id: string, base64Image: string) {
+  async uploadCard(id: string, base64Image: string, points: number = 10, author: string = 'Admin') {
     if (!isAppwriteConfigured()) {
       throw new Error('Appwrite is not configured. Please check your environment variables.');
     }
@@ -70,9 +72,11 @@ export const appwriteService = {
       cardId: id,
       fileId: uploadedFile.$id,
       imageUrl: imageUrl,
+      points: points,
+      author: author,
     });
 
-    return { cardId: id, imageUrl };
+    return { cardId: id, imageUrl, points, author };
   },
 
   async getCards() {
@@ -92,7 +96,9 @@ export const appwriteService = {
         id: doc.cardId,
         image_data: imageUrl,
         appwriteId: doc.$id,
-        fileId: doc.fileId
+        fileId: doc.fileId,
+        points: doc.points || 10,
+        author: doc.author || 'Admin'
       };
     });
   },
